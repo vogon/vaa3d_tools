@@ -44,7 +44,7 @@ bool soma_sort(double search_distance_th, QList<NeuronSWC> consensus_nt_list, do
 
 
 // match and center
-double dist_pt_to_line_seg( XYZ p0, XYZ p1,  XYZ p2, XYZ & closestPt);
+double dsquared_pt_to_line_seg(const XYZ& p0, const XYZ& p1, const XYZ& p2, XYZ & closestPt);
 double correspondingPointFromNeuron(XYZ cur,NeuronTree * nt, XYZ & closest_p);
 double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double distance_threshold, NeuronTree & adjusted_neuron);
 XYZ mean_XYZ(vector<XYZ> points);

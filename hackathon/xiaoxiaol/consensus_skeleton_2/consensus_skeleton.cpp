@@ -18,6 +18,7 @@
 #include <sort_eswc.h>
 #include <cmath>
 #include <climits>
+#include <limits>
 #include <numeric>
 #include <algorithm>
 #include <string>
@@ -746,12 +747,18 @@ bool soma_sort(double search_distance_th, QList<NeuronSWC> consensus_nt_list, do
 
 }
 
-double dist_pt_to_line_seg(const XYZ p0, const XYZ p1, const XYZ p2, XYZ & closestPt) //p1 and p2 are the two ends of the line segment, and p0 the point
+inline float dsquared_L2(const XYZ& a, const XYZ& b)
+{
+	XYZ c = a - b;
+	return dot(c,c);
+}
+
+double dsquared_pt_to_line_seg(const XYZ& p0, const XYZ& p1, const XYZ& p2, XYZ & closestPt) //p1 and p2 are the two ends of the line segment, and p0 the point
 {
     if (p1==p2)
     {
         closestPt = p1;
-        return norm(p0-p1);
+        return dsquared_L2(p0, p1);
     }
         else if (p0==p1 || p0==p2)
     {
@@ -768,8 +775,8 @@ double dist_pt_to_line_seg(const XYZ p0, const XYZ p1, const XYZ p2, XYZ & close
     float t = -d012/v12;
     if (t<0 || t>1) //then no intersection within the lineseg
     {
-        double d01 = dist_L2(p0, p1);
-        double d02 = dist_L2(p0, p2);
+        double d01 = dsquared_L2(p0, p1);
+        double d02 = dsquared_L2(p0, p2);
 
         if (d01<d02){
           closestPt=XYZ(p1.x,p1.y,p1.z);
@@ -787,14 +794,14 @@ double dist_pt_to_line_seg(const XYZ p0, const XYZ p1, const XYZ p2, XYZ & close
     {//intersection
         XYZ xpt(p1.x+d12.x*t, p1.y+d12.y*t, p1.z+d12.z*t);
         closestPt=xpt;
-        return dist_L2(xpt, p0);
+        return dsquared_L2(xpt, p0);
     }
 }
 
 
 double correspondingPointFromNeuron( XYZ pt, NeuronTree * p_nt, XYZ & closest_p)
 {
-   double min_dist = LONG_MAX;
+   double min_dsquared = std::numeric_limits<double>::infinity();
    closest_p.x = -1;
    closest_p.y = -1;
    closest_p.z = -1;
@@ -818,9 +825,9 @@ double correspondingPointFromNeuron( XYZ pt, NeuronTree * p_nt, XYZ & closest_p)
        tp1 = (NeuronSWC *)(&(p_nt->listNeuron.at(i)));
        if (tp1->pn < 0 )
        {
-           double cur_d =dist_L2( XYZ(tp1->x,tp1->y,tp1->z), pt);
-           if (min_dist > cur_d){
-               min_dist = cur_d;
+           double cur_dsquared =dsquared_L2( XYZ(tp1->x,tp1->y,tp1->z), pt);
+           if (min_dsquared > cur_dsquared){
+               min_dsquared = cur_dsquared;
                closest_p = XYZ(tp1->x,tp1->y,tp1->z);
            }
            continue;
@@ -829,11 +836,11 @@ double correspondingPointFromNeuron( XYZ pt, NeuronTree * p_nt, XYZ & closest_p)
 
        //now compute the distance between the pt and the current segment
        XYZ c_p;
-       double cur_d = dist_pt_to_line_seg(pt, XYZ(tp1->x,tp1->y,tp1->z), XYZ(tp2->x,tp2->y,tp2->z),c_p);
+       double cur_dsquared = dsquared_pt_to_line_seg(pt, XYZ(tp1->x,tp1->y,tp1->z), XYZ(tp2->x,tp2->y,tp2->z),c_p);
 
        //now find the min distance
-       if (min_dist > cur_d){
-           min_dist = cur_d;
+       if (min_dsquared > cur_dsquared){
+           min_dsquared = cur_dsquared;
            closest_p = c_p;
        }
 
@@ -844,7 +851,7 @@ double correspondingPointFromNeuron( XYZ pt, NeuronTree * p_nt, XYZ & closest_p)
 
    }
 
-   return min_dist;
+   return sqrt(min_dsquared);
 }
 
 
