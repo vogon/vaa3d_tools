@@ -66,7 +66,7 @@ int consensus_swc_menu(V3DPluginCallback2 &callback, QWidget *parent)
 
 
     QString SelectedNeuronsAnoFileName = fileSaveName+"_SelectedNeurons.ano";
-    remove_outliers(nt_list, SelectedNeuronsAnoFileName);
+    //remove_outliers(nt_list, SelectedNeuronsAnoFileName);
     //if (!consensus_skeleton_votemap(nt_list, merge_result, max_vote_threshold, cluster_distance_threshold,  callback))
     if (!consensus_skeleton_match_center(nt_list, merge_result, max_vote_threshold,
                                          cluster_distance_threshold,  callback))
@@ -253,7 +253,7 @@ bool consensus_swc_func(const V3DPluginArgList & input, V3DPluginArgList & outpu
 	QList<NeuronSWC> merge_result;
 
     QString SelectedNeuronsAnoFileName = outfileName+"_SelectedNeurons.ano";
-    remove_outliers(nt_list, SelectedNeuronsAnoFileName);
+    // remove_outliers(nt_list, SelectedNeuronsAnoFileName);
     //if (!consensus_skeleton_vote_map(nt_list, merge_result, max_vote_threshold,cluster_distance_threshold, callback))
     if (!consensus_skeleton_match_center(nt_list, merge_result, max_vote_threshold,cluster_distance_threshold, callback))
 	{
@@ -626,7 +626,7 @@ int median_swc_menu(V3DPluginCallback2 &callback, QWidget *parent)
     cout << "There are "<<nt_list.size() <<" input neurons."<<endl;
 
     QString out_ano_file_name = fileOpenName + ".SelectedNeurons.ano";
-    remove_outliers(nt_list,out_ano_file_name);
+    //remove_outliers(nt_list,out_ano_file_name);
 
     int id = median_swc(nt_list,outfileName);
 

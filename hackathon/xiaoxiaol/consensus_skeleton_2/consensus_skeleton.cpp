@@ -23,7 +23,7 @@
 #include <algorithm>
 #include <string>
 #include "resample_swc.h"
-
+#include <valgrind/callgrind.h>
 
 using namespace std;
 #define getParent(n,nt) ((nt).listNeuron.at(n).pn<0)?(1000000000):((nt).hashNeuron.value((nt).listNeuron.at(n).pn))
@@ -799,6 +799,36 @@ double dsquared_pt_to_line_seg(const XYZ& p0, const XYZ& p1, const XYZ& p2, XYZ 
 }
 
 
+double correspondingPointFromNeuronFast( NeuronSWC &pt, NeuronTree *p_nt, XYZ & closest_p, 
+	SearchKDTree<NeuronSWC> *kdtree, double longest_edge)
+{
+	// K-d trees can't store anything except points (other, more complex data structures
+	// like "R-trees" and "MVP-trees" seem like potential future extensions), so we use
+	// the following process to find the closest point on a line segment:
+
+	// 1) search for the closest vertex to pt using the K-d tree's nearest neighbor search.
+	NeuronSWC &closest_vertex = kdtree.nearestNeighbor(pt);
+	
+	closest_p.x = closest_vertex.x;
+	closest_p.y = closest_vertex.y;
+	closest_p.z = closest_vertex.z;
+	double min_dsquared = dsquared_L2(closest_p, pt)
+
+	// sidebar: in a graph where the longest edge has length L, and the closest vertex to pt 
+	// (hereafter "P") is r from P, if an edge is closer to P than the vertex we found in 1),
+	// at least one vertex on the edge must be closer to P than sqrt((L/2)^2 + r^2).
+	//
+	// (let the closest edge to P be AB, and the closest point on it to P be K.
+	// the line PK is perpendicular to AB; construct two right triangles AKP and BKP.
+	// the length of AB must be <= L (by definition), therefore the length of the 
+	// shorter of AK or KB must be <= L/2.  the length of KP must be <= r (by definition),
+	// so the hypotenuse AP or BP must be <= sqrt ((L/2)^2 + r^2).)
+	//
+	// 2) so, do a range search of p_nt with radius sqrt((L/2)^2 + r^2).  if any edges are 
+	// closer than r to P, it must be an edge on one of these vertices.
+}
+
+
 double correspondingPointFromNeuron( XYZ pt, NeuronTree * p_nt, XYZ & closest_p)
 {
    double min_dsquared = std::numeric_limits<double>::infinity();
@@ -886,7 +916,7 @@ double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double
     NeuronTree input_neuron = nt_list[input_neuron_id];
     adjusted_neuron.deepCopy(input_neuron);
     vector<XYZ> cluster;
-
+    
     for (int i = 0; i <input_neuron.listNeuron.size(); i++)
     {
         NeuronSWC s = input_neuron.listNeuron.at(i);
@@ -1318,6 +1348,9 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
 //DEBUG
 //      file.close();
 //END
+
+   // CQB: temporary callgrind point
+   CALLGRIND_START_INSTRUMENTATION;
 
    for (int i = 0; i < nt_list_resampled.size(); i++){
        NeuronTree nt = nt_list_resampled[i];
