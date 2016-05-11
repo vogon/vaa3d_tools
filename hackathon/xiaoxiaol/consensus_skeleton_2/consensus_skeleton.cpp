@@ -901,8 +901,8 @@ double correspondingPointFromNeuronFast( NeuronSWC & pt, NeuronTree * p_nt, XYZ 
 			const NeuronSWC *child_node = (&(p_nt->listNeuron.at(h.value(*child))));
 			XYZ c_p;
 			double dsquared = dsquared_pt_to_line_seg(XYZ(pt.x, pt.y, pt.z),
-				XYZ(vertex->x, vertex->y, vertex->z),
 				XYZ(child_node->x, child_node->y, child_node->z),
+				XYZ(vertex->x, vertex->y, vertex->z),
 				c_p);
 
 			if (dsquared < min_dsquared)
@@ -1048,6 +1048,21 @@ double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,
             XYZ closest_p;
             double min_dis = correspondingPointFromNeuronFast(s, &nt_list.at(j), closest_p,
             	kdtrees[j], childMaps[j], longestEdges[j]);
+
+            // XYZ closest_p_slow;
+            // double min_dis_slow = correspondingPointFromNeuron(s, &nt_list.at(j), 
+            // 	closest_p_slow);
+
+            // if (dist_L2(XYZ(closest_p.x, closest_p.y, closest_p.z), 
+            // 	XYZ(closest_p_slow.x, closest_p_slow.y, closest_p_slow.z)) > 0.001)
+            // {
+            // 	cout.precision(17);
+            // 	cout << "s: (" << s.x << ", " << s.y << ", " << s.z << "), closest_p (" 
+            // 		<< min_dis << "): (" << closest_p.x << ", " << closest_p.y << ", " 
+            // 		<< closest_p.z << "), closest_p_slow (" << min_dis_slow << "): ("
+            // 		<< closest_p_slow.x << ", " << closest_p_slow.y << ", " 
+            // 		<< closest_p_slow.z << ")" << endl;
+            // }
 
             if (min_dis < distance_threshold)
             {
@@ -1414,13 +1429,13 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
 	    QList<QMultiHash<V3DLONG, V3DLONG> > childMaps;
 	    QList<double> longestEdges;
 
-	    for (int nt = 0; nt < nt_list_resampled.size(); nt++)
+	    for (int i = 0; i < nt_list_resampled.size(); i++)
 	    {
     		kdtrees.push_back(new SearchKDTree<NeuronSWC>(
-    			nt_list.at(nt).listNeuron, neuronswc_location, neuronswc_d2));
-    		childMaps.push_back(buildChildMap(nt_list.at(nt)));
+    			nt_list_resampled.at(i).listNeuron, neuronswc_location, neuronswc_d2));
+    		childMaps.push_back(buildChildMap(nt_list_resampled.at(i)));
 
-    		double L = maximumEdgeLength(nt_list.at(nt));
+    		double L = maximumEdgeLength(nt_list_resampled.at(i));
 
     		longestEdges.push_back(L);
 	    }
