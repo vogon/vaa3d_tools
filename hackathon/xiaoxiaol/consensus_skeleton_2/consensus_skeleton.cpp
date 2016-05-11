@@ -1431,7 +1431,8 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
 	   		nt.listNeuron.clear();
 	   		nt.hashNeuron.clear();
 	   		int idx = i;
-	   		double editing_dis = match_and_center(nt_list_resampled, idx,cluster_distance_threshold, nt);
+	   		double editing_dis = match_and_center(nt_list_resampled, idx,
+	   			cluster_distance_threshold, kdtrees, childMaps, longestEdges, nt);
 	   		total_editing_dis += editing_dis;
 	   		if (editing_dis > 0)
 	   		{
@@ -1457,6 +1458,7 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
 			nt_list_resampled.push_back( shift_nt_list[j]);
 		}
 
+		// clean up search data structures
 		for (int nt = 0; nt < nt_list_resampled.size(); nt++)
 	    {
 	    	delete kdtrees[nt];
@@ -1493,32 +1495,33 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
 	}
 
 
-   //merge step
+	//merge step
 
-   // save consensued nodes into merge_Results
-   QList<NeuronSWC> merge_result;
-   int TYPE_MERGED=100;
+	// save consensued nodes into merge_Results
+	QList<NeuronSWC> merge_result;
+	int TYPE_MERGED=100;
 
-   int vote_threshold = nt_list_resampled.size()/3;
-   if (vote_threshold > max_vote_threshold)
-   {
-   	vote_threshold = max_vote_threshold;
-   }
+	int vote_threshold = nt_list_resampled.size()/3;
+	if (vote_threshold > max_vote_threshold)
+	{
+		vote_threshold = max_vote_threshold;
+	}
 
-   if (vote_threshold < 2){
-   	vote_threshold = 2;
-   }
-   cout <<" Vote threshold is set at " << vote_threshold<<endl;
+	if (vote_threshold < 2){
+		vote_threshold = 2;
+	}
+	cout <<" Vote threshold is set at " << vote_threshold<<endl;
 
-   merge_and_vote(nt_list_resampled,vote_threshold,  merge_result,TYPE_MERGED);
+	merge_and_vote(nt_list_resampled,vote_threshold,  merge_result,TYPE_MERGED);
 
-   // collect the edge votes
-   double * adjMatrix;
-   V3DLONG num_nodes = merge_result.size();
-   try{
-   	adjMatrix = new double[num_nodes*num_nodes];
-   	for (V3DLONG i=0;i<num_nodes*num_nodes;i++) adjMatrix[i] = 0;
-   }
+	// collect the edge votes
+	double * adjMatrix;
+	V3DLONG num_nodes = merge_result.size();
+	try{
+		adjMatrix = new double[num_nodes*num_nodes];
+		for (V3DLONG i=0;i<num_nodes*num_nodes;i++) adjMatrix[i] = 0;
+	}
+
 	catch (...)
 	{
 		fprintf(stderr,"fail to allocate memory.\n");

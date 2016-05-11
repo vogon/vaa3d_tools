@@ -5,6 +5,7 @@
 #include "v3d_interface.h"  // use call back to save image for debugging purpose
 #include "basic_surf_objs.h"
 #include "point3d_util.h"
+#include "search_kdtree.h"
 
 using namespace std;
 
@@ -46,7 +47,11 @@ bool soma_sort(double search_distance_th, QList<NeuronSWC> consensus_nt_list, do
 // match and center
 double dsquared_pt_to_line_seg(const XYZ& p0, const XYZ& p1, const XYZ& p2, XYZ & closestPt);
 double correspondingPointFromNeuron(XYZ cur,NeuronTree * nt, XYZ & closest_p);
-double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double distance_threshold, NeuronTree & adjusted_neuron);
+double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id, 
+	double distance_threshold, 
+	QList<SearchKDTree<NeuronSWC> *> & kdtrees,
+	QList<QMultiHash<V3DLONG, V3DLONG> > & childMaps, 
+	QList<double> & longestEdges, NeuronTree & adjusted_neuron);
 XYZ mean_XYZ(vector<XYZ> points);
 bool tightRange(vector<double> x, double &low, double &high);
 bool consensus_skeleton_match_center(vector<NeuronTree> nt_list, QList<NeuronSWC> & final_consensus, int max_vote_threshold,

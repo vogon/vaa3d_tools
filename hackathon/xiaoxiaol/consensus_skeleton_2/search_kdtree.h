@@ -1,6 +1,8 @@
 #ifndef SEARCH_KDTREE_H
 #define SEARCH_KDTREE_H
 
+#include <limits>
+
 template <typename T>
 class SearchKDTree
 {
