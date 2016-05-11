@@ -1009,7 +1009,11 @@ double neuronswc_d2(const NeuronSWC & a, const NeuronSWC & b)
 }
 
 
-double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double distance_threshold, NeuronTree & adjusted_neuron)
+double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id, 
+	double distance_threshold, 
+	QList<SearchKDTree<NeuronSWC> *> & kdtrees,
+	QList<QMultiHash<V3DLONG, V3DLONG> > & childMaps, 
+	QList<double> & longestEdges, NeuronTree & adjusted_neuron)
 {
     if(  input_neuron_id > (nt_list.size() -1) )
     {
@@ -1020,33 +1024,6 @@ double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double
     NeuronTree input_neuron = nt_list[input_neuron_id];
     adjusted_neuron.deepCopy(input_neuron);
     vector<XYZ> cluster;
-
-    QList<SearchKDTree<NeuronSWC> *> kdtrees;
-    QList<QMultiHash<V3DLONG, V3DLONG> > childMaps;
-    QList<double> longestEdges;
-
-    for (int nt = 0; nt < nt_list.size(); nt++)
-    {
-    	if (nt == input_neuron_id)
-    	{
-    		// don't generate search data structures for the input neuron
-    		kdtrees.push_back(NULL);
-    		childMaps.push_back(QMultiHash<V3DLONG, V3DLONG>());
-    		longestEdges.push_back(0);
-    	}
-    	else
-    	{
-    		kdtrees.push_back(new SearchKDTree<NeuronSWC>(
-    			nt_list.at(nt).listNeuron, neuronswc_location, neuronswc_d2));
-    		childMaps.push_back(buildChildMap(nt_list.at(nt)));
-
-    		double L = maximumEdgeLength(nt_list.at(nt));
-
-    		longestEdges.push_back(L);
-    		cout << "match_and_center: longest edge in neuron " << nt << " is "
-    			<< L << endl;
-    	}
-    }
     
     for (int i = 0; i <input_neuron.listNeuron.size(); i++)
     {
@@ -1068,36 +1045,14 @@ double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double
                 continue;
             }
 
-            //double correspondingPointFromNeuronFast( NeuronSWC & pt, NeuronTree * p_nt, XYZ & closest_p, 
-	//SearchKDTree<NeuronSWC> * kdtree, QMultiHash<V3DLONG, V3DLONG> & childMap, double longest_edge )
-
-            XYZ closest_p_fast;
-            double min_dis_fast = correspondingPointFromNeuronFast(s, &nt_list.at(j), closest_p_fast,
+            XYZ closest_p;
+            double min_dis = correspondingPointFromNeuronFast(s, &nt_list.at(j), closest_p,
             	kdtrees[j], childMaps[j], longestEdges[j]);
 
-    //         XYZ closest_p;
-    //         //find closest swc node from resampled tree j
-    //         double min_dis = correspondingPointFromNeuron(cur, &nt_list.at(j), closest_p);
-
-    //         if (min_dis != min_dis_fast)
-    //         {
-    //         	cerr << "min_dis (" << min_dis << ") != min_dis_fast (" << min_dis_fast << 
-    //         		")" << endl;
-    //         	cerr << "closest_p_fast: (" << closest_p_fast.x << ", " << 
-    //         		closest_p_fast.y << ", " << closest_p_fast.z << ")" << endl;
-				// cerr << "closest_p: (" << closest_p.x << ", " <<
-				// 	closest_p.y << ", " << closest_p.z << ")" << endl;
-    //         }
-
-            if (min_dis_fast < distance_threshold)
+            if (min_dis < distance_threshold)
             {
-            	cluster.push_back(closest_p_fast);
+            	cluster.push_back(closest_p);
             }
-
-            // if (min_dis < distance_threshold)
-            // {
-            //     cluster.push_back(closest_p);
-            // }
         }
 
         //average over the clustered location p
@@ -1303,132 +1258,131 @@ double correspondingNodeFromNeuron(XYZ pt, QList<NeuronSWC> listNodes, int &clos
 
 
 
- bool merge_and_vote(vector<NeuronTree>  & nt_list_resampled,int vote_threshold,  QList<NeuronSWC> &merge_result, int TYPE_MERGED)
- {
-  //merge range 1.0 diameter nodes into one consensus node
-
-     merge_result.clear();
-     for (int k = 0; k< nt_list_resampled.size();k++)
-     {
-         NeuronTree *input_neuron = &(nt_list_resampled[k]);
-         vector<XYZ> cluster;
-
-         for (int i = 0; i <input_neuron->listNeuron.size(); i++)
-         {
-             NeuronSWC * s = &(input_neuron->listNeuron[i]);
-             if (s->type == TYPE_MERGED)
-             {
-                 // already merged, skip the merging
-                 continue;
-             }
-             else{
-                 s->type = TYPE_MERGED;// tag merged status
-                 s->seg_id = -1;
-             }
-
-             XYZ cur;
-             cur.x = s->x;
-             cur.y = s->y;
-             cur.z = s->z;
-
-             cluster.clear();
-
-             cluster.push_back(cur);// cluster contains the point itself
-             vector<NeuronSWC *> closestNodes;
-             closestNodes.clear();
-             for (int j = k+1; j < nt_list_resampled.size(); j++)
-             {// 0~k already merged
-
-                 //find closest swc node from resampled tree j
-                 int closestNodeIdx = -1;
-                 NeuronTree * p_nt= &(nt_list_resampled[j]);
-                 double min_dis = correspondingNodeFromNeuron(cur, p_nt->listNeuron, closestNodeIdx,TYPE_MERGED);
-                 if (min_dis <= 1.0)
-                 {// only merge the nodes that are close to each other (< 1.0 voxel in distance)
-                     NeuronSWC * mergeNode = &( p_nt->listNeuron[closestNodeIdx]);
-                     cluster.push_back(XYZ(mergeNode->x, mergeNode->y, mergeNode->z));
-                     mergeNode->type = TYPE_MERGED; //label merged
-                     mergeNode->seg_id = -1;
-                     closestNodes.push_back(mergeNode);
-                 }
-             }
-
-             //average over the clustered location p
-             XYZ average_p =  mean_XYZ(cluster);
-             bool FOUND_MATCH = false;
-             int idx = -1;
-             double m_dis = correspondingNodeFromNeuron(average_p, merge_result,idx, TYPE_MERGED);
-             if (m_dis <= 1.0)
-             {
-
-                 FOUND_MATCH = true;
-                 //assign id for edge votes counting
-                 s->seg_id = merge_result[idx].seg_id;
-
-                 //                     merge_result[idx].x =  (merge_result[idx].x  +average_p.x)/2.0;
-                 //                     merge_result[idx].y =  (merge_result[idx].y  +average_p.y)/2.0;
-                 //                     merge_result[idx].z =  (merge_result[idx].z  +average_p.z)/2.0;
-                 //                     merge_result[idx].r += cluster.size();
-             }
-
-
-             if (!FOUND_MATCH && cluster.size() >= vote_threshold)
-             {
-                 NeuronSWC S;
-                 S.x = average_p.x;
-                 S.y = average_p.y;
-                 S.z = average_p.z;
-                 S.pn = -1;
-                 S.n = merge_result.size()+1;
-                 S.r = double(cluster.size())/double(nt_list_resampled.size()); // location votes
-                 S.seg_id = merge_result.size();
-                 S.fea_val.clear();
-
-                 // keep noting the consensus node idx
-                 s->seg_id = merge_result.size();
-
-                 // add a new consensus node
-                 merge_result.append(S);
-
-             }
-             //map each node to it's consensus node id
-
-             for (int ii = 0 ; ii < closestNodes.size(); ii++)
-             {
-                 closestNodes[ii]->seg_id = s->seg_id;
-
-             }
-
-
-
-
-         }
-     }
-
-     return true;
- }
-
-
-bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSWC> & final_consensus,
-               int max_vote_threshold,int cluster_distance_threshold, V3DPluginCallback2 &callback)
+bool merge_and_vote(vector<NeuronTree>  & nt_list_resampled,int vote_threshold,  QList<NeuronSWC> &merge_result, int TYPE_MERGED)
 {
+ //merge range 1.0 diameter nodes into one consensus node
 
-    //resample input swcs
-    vector<NeuronTree> nt_list_resampled;
-    for (int i = 0; i < nt_list.size(); i++){
-        NeuronTree nt = nt_list[i];
-        if (nt.listNeuron.size()>0){
-            //resample with step size 1
-            NeuronTree resampled = resample(nt, 1.0);
-             if (resampled.listNeuron.size()>0){
-                resampled.file = nt.file;
-                nt_list_resampled.push_back(resampled);
-             }
+    merge_result.clear();
+    for (int k = 0; k< nt_list_resampled.size();k++)
+    {
+        NeuronTree *input_neuron = &(nt_list_resampled[k]);
+        vector<XYZ> cluster;
+
+        for (int i = 0; i <input_neuron->listNeuron.size(); i++)
+        {
+            NeuronSWC * s = &(input_neuron->listNeuron[i]);
+            if (s->type == TYPE_MERGED)
+            {
+                // already merged, skip the merging
+                continue;
+            }
+            else{
+                s->type = TYPE_MERGED;// tag merged status
+                s->seg_id = -1;
+            }
+
+            XYZ cur;
+            cur.x = s->x;
+            cur.y = s->y;
+            cur.z = s->z;
+
+            cluster.clear();
+
+            cluster.push_back(cur);// cluster contains the point itself
+            vector<NeuronSWC *> closestNodes;
+            closestNodes.clear();
+            for (int j = k+1; j < nt_list_resampled.size(); j++)
+            {// 0~k already merged
+
+                //find closest swc node from resampled tree j
+                int closestNodeIdx = -1;
+                NeuronTree * p_nt= &(nt_list_resampled[j]);
+                double min_dis = correspondingNodeFromNeuron(cur, p_nt->listNeuron, closestNodeIdx,TYPE_MERGED);
+                if (min_dis <= 1.0)
+                {// only merge the nodes that are close to each other (< 1.0 voxel in distance)
+                    NeuronSWC * mergeNode = &( p_nt->listNeuron[closestNodeIdx]);
+                    cluster.push_back(XYZ(mergeNode->x, mergeNode->y, mergeNode->z));
+                    mergeNode->type = TYPE_MERGED; //label merged
+                    mergeNode->seg_id = -1;
+                    closestNodes.push_back(mergeNode);
+                }
+            }
+
+            //average over the clustered location p
+            XYZ average_p =  mean_XYZ(cluster);
+            bool FOUND_MATCH = false;
+            int idx = -1;
+            double m_dis = correspondingNodeFromNeuron(average_p, merge_result,idx, TYPE_MERGED);
+            if (m_dis <= 1.0)
+            {
+
+                FOUND_MATCH = true;
+                //assign id for edge votes counting
+                s->seg_id = merge_result[idx].seg_id;
+
+                //                     merge_result[idx].x =  (merge_result[idx].x  +average_p.x)/2.0;
+                //                     merge_result[idx].y =  (merge_result[idx].y  +average_p.y)/2.0;
+                //                     merge_result[idx].z =  (merge_result[idx].z  +average_p.z)/2.0;
+                //                     merge_result[idx].r += cluster.size();
+            }
+
+
+            if (!FOUND_MATCH && cluster.size() >= vote_threshold)
+            {
+                NeuronSWC S;
+                S.x = average_p.x;
+                S.y = average_p.y;
+                S.z = average_p.z;
+                S.pn = -1;
+                S.n = merge_result.size()+1;
+                S.r = double(cluster.size())/double(nt_list_resampled.size()); // location votes
+                S.seg_id = merge_result.size();
+                S.fea_val.clear();
+
+                // keep noting the consensus node idx
+                s->seg_id = merge_result.size();
+
+                // add a new consensus node
+                merge_result.append(S);
+
+            }
+            //map each node to it's consensus node id
+
+            for (int ii = 0 ; ii < closestNodes.size(); ii++)
+            {
+                closestNodes[ii]->seg_id = s->seg_id;
+
+            }
+
+
+
+
         }
     }
 
+    return true;
+}
 
-   int max_num_iters = 5;
+
+bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSWC> & final_consensus,
+ 	int max_vote_threshold,int cluster_distance_threshold, V3DPluginCallback2 &callback)
+{
+    //resample input swcs
+ 	vector<NeuronTree> nt_list_resampled;
+ 	for (int i = 0; i < nt_list.size(); i++){
+ 		NeuronTree nt = nt_list[i];
+ 		if (nt.listNeuron.size()>0){
+            //resample with step size 1
+ 			NeuronTree resampled = resample(nt, 1.0);
+ 			if (resampled.listNeuron.size()>0){
+ 				resampled.file = nt.file;
+ 				nt_list_resampled.push_back(resampled);
+ 			}
+ 		}
+ 	}
+
+
+ 	int max_num_iters = 5;
 
 
 // DEBUG
@@ -1444,79 +1398,99 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
 //END
 
    //identify nearest neighbothood, and find the average location
-  vector<NeuronTree> shift_nt_list;
-  NeuronTree nt;
+ 	vector<NeuronTree> shift_nt_list;
+ 	NeuronTree nt;
 
-   cout<<"\n\nMatch and center:"<<endl;
-   for (int k = 0 ; k<max_num_iters; k++)
-   { // iterate multiple times, neurons will converge to center locations
-       cout<<"Iteration " <<k<<":"<<endl;
-       shift_nt_list.clear();
-       double total_editing_dis = 0.0;
-       int total_nodes = 0;
-       for (int i = 0; i < nt_list_resampled.size(); i++)
-       {
-           total_nodes += nt_list_resampled[i].listNeuron.size();
-           nt.listNeuron.clear();
-           nt.hashNeuron.clear();
-           int idx = i;
-           double editing_dis = match_and_center(nt_list_resampled, idx,cluster_distance_threshold, nt);
-           total_editing_dis += editing_dis;
-           if (editing_dis > 0)
-           {
-               shift_nt_list.push_back(nt);
-//DEBUG
-//               if ( k == (max_num_iters -1))
-//               {
-//                   char * filename = new char [1000];
-//                   sprintf( filename, "%s_adjusted%d.swc", nt_list_resampled[i].file.toStdString().c_str(),k);
+ 	cout<<"\n\nMatch and center:"<<endl;
+ 	for (int k = 0 ; k<max_num_iters; k++)
+    { // iterate multiple times, neurons will converge to center locations
+	   	cout<<"Iteration " <<k<<":"<<endl;
+	   	shift_nt_list.clear();
+	   	double total_editing_dis = 0.0;
+	   	int total_nodes = 0;
 
-//                   export_listNeuron_2swc( nt.listNeuron, filename);
-//                   stream_ano<< "SWCFILE="<<QString(filename)<<"\n";
-//                   //cout<<"print to ano file: SWCFILE="<<filename<<endl;
-//                   delete [] filename;
-//               }
- //END
-           }
+   		// build search structures to speed up merge & center
+   	    QList<SearchKDTree<NeuronSWC> *> kdtrees;
+	    QList<QMultiHash<V3DLONG, V3DLONG> > childMaps;
+	    QList<double> longestEdges;
 
-       }
+	    for (int nt = 0; nt < nt_list_resampled.size(); nt++)
+	    {
+    		kdtrees.push_back(new SearchKDTree<NeuronSWC>(
+    			nt_list.at(nt).listNeuron, neuronswc_location, neuronswc_d2));
+    		childMaps.push_back(buildChildMap(nt_list.at(nt)));
 
-       nt_list_resampled.clear();//for the next iteration
-       for (int j =0 ; j < shift_nt_list.size(); j++)
-       {
-           nt_list_resampled.push_back( shift_nt_list[j]);
-       }
+    		double L = maximumEdgeLength(nt_list.at(nt));
 
-       //converage
-       cout<<"Total editing distance is :" <<total_editing_dis<<endl;
-       cout<<"Avearge node editing distance is :" <<total_editing_dis/total_nodes<<endl;
+    		longestEdges.push_back(L);
+	    }
 
-       if ( (total_editing_dis / total_nodes) < 0.2)
-       {
-         cout<<"Converged: stop the iterations.";
-         break;
-       }
+	   	for (int i = 0; i < nt_list_resampled.size(); i++)
+	   	{
+	   		total_nodes += nt_list_resampled[i].listNeuron.size();
+	   		nt.listNeuron.clear();
+	   		nt.hashNeuron.clear();
+	   		int idx = i;
+	   		double editing_dis = match_and_center(nt_list_resampled, idx,cluster_distance_threshold, nt);
+	   		total_editing_dis += editing_dis;
+	   		if (editing_dis > 0)
+	   		{
+	   			shift_nt_list.push_back(nt);
+	//DEBUG
+	//               if ( k == (max_num_iters -1))
+	//               {
+	//                   char * filename = new char [1000];
+	//                   sprintf( filename, "%s_adjusted%d.swc", nt_list_resampled[i].file.toStdString().c_str(),k);
 
+	//                   export_listNeuron_2swc( nt.listNeuron, filename);
+	//                   stream_ano<< "SWCFILE="<<QString(filename)<<"\n";
+	//                   //cout<<"print to ano file: SWCFILE="<<filename<<endl;
+	//                   delete [] filename;
+	//               }
+	 //END
+	   		}
+	   	}
 
-   }
+		nt_list_resampled.clear();//for the next iteration
+		for (int j =0 ; j < shift_nt_list.size(); j++)
+		{
+			nt_list_resampled.push_back( shift_nt_list[j]);
+		}
+
+		for (int nt = 0; nt < nt_list_resampled.size(); nt++)
+	    {
+	    	delete kdtrees[nt];
+	    	kdtrees[nt] = NULL;
+	    }
+
+		//converage
+		cout<<"Total editing distance is :" <<total_editing_dis<<endl;
+		cout<<"Avearge node editing distance is :" <<total_editing_dis/total_nodes<<endl;
+
+		if ( (total_editing_dis / total_nodes) < 0.2)
+		{
+			cout<<"Converged: stop the iterations.";
+			break;
+		}
+    }
 //DEBUG
 //      file.close();
 //END
 
-   // CQB: temporary callgrind point
-   CALLGRIND_START_INSTRUMENTATION;
+	// CQB: temporary callgrind point
+	CALLGRIND_START_INSTRUMENTATION;
 
-   for (int i = 0; i < nt_list_resampled.size(); i++){
-       NeuronTree nt = nt_list_resampled[i];
-       if (nt.listNeuron.size()>0){
-           //resample with step size 1
-           NeuronTree resampled = resample(nt, 1.0);
-            if (resampled.listNeuron.size()>0){
-               resampled.file = nt.file;
-               nt_list_resampled[i] = resampled;
-            }
-       }
-   }
+	for (int i = 0; i < nt_list_resampled.size(); i++){
+		NeuronTree nt = nt_list_resampled[i];
+		if (nt.listNeuron.size()>0){
+	       	//resample with step size 1
+			NeuronTree resampled = resample(nt, 1.0);
+			if (resampled.listNeuron.size()>0){
+				resampled.file = nt.file;
+				nt_list_resampled[i] = resampled;
+			}
+		}
+	}
 
 
    //merge step
@@ -1528,11 +1502,11 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
    int vote_threshold = nt_list_resampled.size()/3;
    if (vote_threshold > max_vote_threshold)
    {
-       vote_threshold = max_vote_threshold;
+   	vote_threshold = max_vote_threshold;
    }
 
    if (vote_threshold < 2){
-       vote_threshold = 2;
+   	vote_threshold = 2;
    }
    cout <<" Vote threshold is set at " << vote_threshold<<endl;
 
@@ -1542,70 +1516,70 @@ bool consensus_skeleton_match_center(vector<NeuronTree>  nt_list, QList<NeuronSW
    double * adjMatrix;
    V3DLONG num_nodes = merge_result.size();
    try{
-       adjMatrix = new double[num_nodes*num_nodes];
-       for (V3DLONG i=0;i<num_nodes*num_nodes;i++) adjMatrix[i] = 0;
+   	adjMatrix = new double[num_nodes*num_nodes];
+   	for (V3DLONG i=0;i<num_nodes*num_nodes;i++) adjMatrix[i] = 0;
    }
-   catch (...)
-   {
-       fprintf(stderr,"fail to allocate memory.\n");
-       if (adjMatrix) {delete[] adjMatrix; adjMatrix=0;}
+	catch (...)
+	{
+		fprintf(stderr,"fail to allocate memory.\n");
+		if (adjMatrix) {delete[] adjMatrix; adjMatrix=0;}
 
-       return false;
-   }
-   //DEBUG
-   //export_listNeuron_2swc(merge_result,"./test_merge_results_1.eswc");
-   build_adj_matrix(nt_list_resampled, merge_result, adjMatrix,TYPE_MERGED);
-
-
-   // connect the consensus nodes with vote confidence
-   build_tree_from_adj_matrix_mst(adjMatrix, merge_result, vote_threshold);
-
-   double soma_x = merge_result[0].x;
-   double soma_y = merge_result[0].y;
-   double soma_z = merge_result[0].z;
-
-   //DEBUG
-   //export_listNeuron_2swc(merge_result,"./test_merge_results_3.eswc");
-   if (   soma_sort(10.0, merge_result, soma_x, soma_y, soma_z, final_consensus,1.0) )
-   {
-       //cout <<"merged swc #nodes = "<< final_consensus.size()<<endl<<endl;
-
-       int end = final_consensus.size()-1;
-       int begin = end;
-       int count = 0;
-       if (final_consensus[0].pn != -1)
-       {
-           cout<< "Error: consensus tree does not start with root!";
-
-       }
-
-       // erase small isolated branches
-       for (int i=final_consensus.size()-1; i>=0; i--)
-       {
-           if (final_consensus[i].pn == -1)
-           {
-               begin = i;
-               //erase the short branches
-               if (count < cluster_distance_threshold*2)
-               {
-                   final_consensus.erase(final_consensus.begin()+begin, final_consensus.begin() +end+1);
-               }
-
-               end = begin-1;
-               count = 0;
-           }
-           else
-           {
-               count ++;
-           }
-       }
+		return false;
+	}
+	   //DEBUG
+	   //export_listNeuron_2swc(merge_result,"./test_merge_results_1.eswc");
+	build_adj_matrix(nt_list_resampled, merge_result, adjMatrix,TYPE_MERGED);
 
 
+	   // connect the consensus nodes with vote confidence
+	build_tree_from_adj_matrix_mst(adjMatrix, merge_result, vote_threshold);
 
-       return true;
-   }
+	double soma_x = merge_result[0].x;
+	double soma_y = merge_result[0].y;
+	double soma_z = merge_result[0].z;
 
-return false;
+	   //DEBUG
+	   //export_listNeuron_2swc(merge_result,"./test_merge_results_3.eswc");
+	if (   soma_sort(10.0, merge_result, soma_x, soma_y, soma_z, final_consensus,1.0) )
+	{
+	       //cout <<"merged swc #nodes = "<< final_consensus.size()<<endl<<endl;
+
+		int end = final_consensus.size()-1;
+		int begin = end;
+		int count = 0;
+		if (final_consensus[0].pn != -1)
+		{
+			cout<< "Error: consensus tree does not start with root!";
+
+		}
+
+	       // erase small isolated branches
+		for (int i=final_consensus.size()-1; i>=0; i--)
+		{
+			if (final_consensus[i].pn == -1)
+			{
+				begin = i;
+	               //erase the short branches
+				if (count < cluster_distance_threshold*2)
+				{
+					final_consensus.erase(final_consensus.begin()+begin, final_consensus.begin() +end+1);
+				}
+
+				end = begin-1;
+				count = 0;
+			}
+			else
+			{
+				count ++;
+			}
+		}
+
+
+
+		return true;
+	}
+
+	return false;
 }
 
 
