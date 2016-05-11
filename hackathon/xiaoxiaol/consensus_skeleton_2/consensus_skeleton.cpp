@@ -22,6 +22,7 @@
 #include <numeric>
 #include <algorithm>
 #include <string>
+#include "search_kdtree.h"
 #include "resample_swc.h"
 #include <valgrind/callgrind.h>
 
@@ -798,21 +799,59 @@ double dsquared_pt_to_line_seg(const XYZ& p0, const XYZ& p1, const XYZ& p2, XYZ 
     }
 }
 
+QMultiHash<V3DLONG, V3DLONG> buildChildMap( NeuronTree & nt )
+{
+	QMultiHash<V3DLONG, V3DLONG> map;
 
-double correspondingPointFromNeuronFast( NeuronSWC &pt, NeuronTree *p_nt, XYZ & closest_p, 
-	SearchKDTree<NeuronSWC> *kdtree, double longest_edge)
+	for (QList<NeuronSWC>::const_iterator node = nt.listNeuron.constBegin();
+		node != nt.listNeuron.constEnd(); node++)
+	{
+		if (node->pn >= 0)
+		{
+			map.insert(node->pn, node->n);
+		}
+	}
+
+	return map;
+}
+
+double maximumEdgeLength( NeuronTree & nt )
+{
+	double max = 0;
+
+	for (QList<NeuronSWC>::const_iterator node = nt.listNeuron.constBegin();
+		node != nt.listNeuron.constEnd(); node++)
+	{
+		if (node->pn >= 0)
+		{
+			NeuronSWC parent = nt.listNeuron.at(nt.hashNeuron.value(node->pn));
+			double dist = dist_L2(XYZ(parent.x, parent.y, parent.z),
+				XYZ(node->x, node->y, node->z));
+
+			if (dist > max)
+			{
+				max = dist;
+			}
+		}
+	}
+
+	return max;
+}
+
+double correspondingPointFromNeuronFast( NeuronSWC & pt, NeuronTree * p_nt, XYZ & closest_p, 
+	SearchKDTree<NeuronSWC> * kdtree, QMultiHash<V3DLONG, V3DLONG> & childMap, double longest_edge )
 {
 	// K-d trees can't store anything except points (other, more complex data structures
 	// like "R-trees" and "MVP-trees" seem like potential future extensions), so we use
 	// the following process to find the closest point on a line segment:
 
 	// 1) search for the closest vertex to pt using the K-d tree's nearest neighbor search.
-	NeuronSWC &closest_vertex = kdtree.nearestNeighbor(pt);
+	NeuronSWC &closest_vertex = kdtree->nearestNeighbor(pt);
 	
 	closest_p.x = closest_vertex.x;
 	closest_p.y = closest_vertex.y;
 	closest_p.z = closest_vertex.z;
-	double min_dsquared = dsquared_L2(closest_p, pt)
+	double min_dsquared = dsquared_L2(closest_p, pt);
 
 	// sidebar: in a graph where the longest edge has length L, and the closest vertex to pt 
 	// (hereafter "P") is r from P, if an edge is closer to P than the vertex we found in 1),
@@ -824,10 +863,58 @@ double correspondingPointFromNeuronFast( NeuronSWC &pt, NeuronTree *p_nt, XYZ & 
 	// shorter of AK or KB must be <= L/2.  the length of KP must be <= r (by definition),
 	// so the hypotenuse AP or BP must be <= sqrt ((L/2)^2 + r^2).)
 	//
-	// 2) so, do a range search of p_nt with radius sqrt((L/2)^2 + r^2).  if any edges are 
+	// 2) so, do a range search of p_nt with radius sqrt((L/2)^2 + r^2).  if an edge is 
 	// closer than r to P, it must be an edge on one of these vertices.
-}
+	double range2 = ((longest_edge / 2) * (longest_edge / 2)) + min_dsquared;
+	QList<NeuronSWC> candidate_vertices = kdtree->rangeSearch(pt, range2);
+	
+	QHash<int, int> & h = p_nt->hashNeuron;
 
+	// 3) now we have a list of vertices; check all their edges (left as a future exercise: 
+	// remove the redundant checks if both vertices on an edge are in the list of candidates)
+	for (QList<NeuronSWC>::const_iterator vertex = candidate_vertices.constBegin(); 
+		vertex != candidate_vertices.constEnd(); vertex++)
+	{
+		// check edge to parent
+		if (vertex->pn >= 0)
+		{
+			const NeuronSWC *parent = (&(p_nt->listNeuron.at(h.value(vertex->pn))));
+			XYZ c_p;
+			double dsquared = dsquared_pt_to_line_seg(XYZ(pt.x, pt.y, pt.z),
+				XYZ(vertex->x, vertex->y, vertex->z),
+				XYZ(parent->x, parent->y, parent->z),
+				c_p);
+
+			if (dsquared < min_dsquared)
+			{
+				min_dsquared = dsquared;
+				closest_p = c_p;
+			}
+		}
+		
+		// check edges to children
+		QList<V3DLONG> children = childMap.values(vertex->n);
+
+		for (QList<V3DLONG>::const_iterator child = children.constBegin(); 
+			child != children.constEnd(); child++)
+		{
+			const NeuronSWC *child_node = (&(p_nt->listNeuron.at(h.value(*child))));
+			XYZ c_p;
+			double dsquared = dsquared_pt_to_line_seg(XYZ(pt.x, pt.y, pt.z),
+				XYZ(vertex->x, vertex->y, vertex->z),
+				XYZ(child_node->x, child_node->y, child_node->z),
+				c_p);
+
+			if (dsquared < min_dsquared)
+			{
+				min_dsquared = dsquared;
+				closest_p = c_p;
+			}
+		}
+	}
+
+	return sqrt(min_dsquared);
+}
 
 double correspondingPointFromNeuron( XYZ pt, NeuronTree * p_nt, XYZ & closest_p)
 {
@@ -905,6 +992,23 @@ XYZ mean_XYZ(vector<XYZ> points)
 }
 
 
+double neuronswc_location(const NeuronSWC & swc, int axis)
+{
+	switch (axis)
+	{
+		case 0: return swc.x;
+		case 1: return swc.y;
+		case 2: return swc.z;
+		default: return nan("");
+	}
+}
+
+double neuronswc_d2(const NeuronSWC & a, const NeuronSWC & b)
+{
+	return dsquared_L2(XYZ(a.x, a.y, a.z), XYZ(b.x, b.y, b.z));
+}
+
+
 double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double distance_threshold, NeuronTree & adjusted_neuron)
 {
     if(  input_neuron_id > (nt_list.size() -1) )
@@ -916,6 +1020,33 @@ double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double
     NeuronTree input_neuron = nt_list[input_neuron_id];
     adjusted_neuron.deepCopy(input_neuron);
     vector<XYZ> cluster;
+
+    QList<SearchKDTree<NeuronSWC> *> kdtrees;
+    QList<QMultiHash<V3DLONG, V3DLONG> > childMaps;
+    QList<double> longestEdges;
+
+    for (int nt = 0; nt < nt_list.size(); nt++)
+    {
+    	if (nt == input_neuron_id)
+    	{
+    		// don't generate search data structures for the input neuron
+    		kdtrees.push_back(NULL);
+    		childMaps.push_back(QMultiHash<V3DLONG, V3DLONG>());
+    		longestEdges.push_back(0);
+    	}
+    	else
+    	{
+    		kdtrees.push_back(new SearchKDTree<NeuronSWC>(
+    			nt_list.at(nt).listNeuron, neuronswc_location, neuronswc_d2));
+    		childMaps.push_back(buildChildMap(nt_list.at(nt)));
+
+    		double L = maximumEdgeLength(nt_list.at(nt));
+
+    		longestEdges.push_back(L);
+    		cout << "match_and_center: longest edge in neuron " << nt << " is "
+    			<< L << endl;
+    	}
+    }
     
     for (int i = 0; i <input_neuron.listNeuron.size(); i++)
     {
@@ -937,13 +1068,36 @@ double match_and_center(vector<NeuronTree> nt_list, int input_neuron_id,  double
                 continue;
             }
 
-            XYZ closest_p;
-            //find closest swc node from resampled tree j
-            double min_dis = correspondingPointFromNeuron(cur, &nt_list.at(j), closest_p);
-            if (min_dis < distance_threshold)
+            //double correspondingPointFromNeuronFast( NeuronSWC & pt, NeuronTree * p_nt, XYZ & closest_p, 
+	//SearchKDTree<NeuronSWC> * kdtree, QMultiHash<V3DLONG, V3DLONG> & childMap, double longest_edge )
+
+            XYZ closest_p_fast;
+            double min_dis_fast = correspondingPointFromNeuronFast(s, &nt_list.at(j), closest_p_fast,
+            	kdtrees[j], childMaps[j], longestEdges[j]);
+
+    //         XYZ closest_p;
+    //         //find closest swc node from resampled tree j
+    //         double min_dis = correspondingPointFromNeuron(cur, &nt_list.at(j), closest_p);
+
+    //         if (min_dis != min_dis_fast)
+    //         {
+    //         	cerr << "min_dis (" << min_dis << ") != min_dis_fast (" << min_dis_fast << 
+    //         		")" << endl;
+    //         	cerr << "closest_p_fast: (" << closest_p_fast.x << ", " << 
+    //         		closest_p_fast.y << ", " << closest_p_fast.z << ")" << endl;
+				// cerr << "closest_p: (" << closest_p.x << ", " <<
+				// 	closest_p.y << ", " << closest_p.z << ")" << endl;
+    //         }
+
+            if (min_dis_fast < distance_threshold)
             {
-                cluster.push_back(closest_p);
+            	cluster.push_back(closest_p_fast);
             }
+
+            // if (min_dis < distance_threshold)
+            // {
+            //     cluster.push_back(closest_p);
+            // }
         }
 
         //average over the clustered location p

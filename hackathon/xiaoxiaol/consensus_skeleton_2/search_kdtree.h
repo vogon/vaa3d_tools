@@ -19,7 +19,15 @@ public:
 	T &nearestNeighbor(const T & pt) const
 	{
 		double r2 = std::numeric_limits<double>::infinity();
-		return searchSubtree(pt, this->root, r2, NULL)->value;
+		return nnSearchSubtree(pt, this->root, r2, NULL)->value;
+	}
+
+	QList<T> rangeSearch(const T & center, double r2) const
+	{
+		QList<T> results;
+		rangeSearchSubtree(center, this->root, r2, results);
+
+		return results;
 	}
 
 private:
@@ -102,7 +110,52 @@ private:
 		return root;
 	}
 
-	Node *searchSubtree(const T & pt, Node *root, double & cutoff_r2, Node *default_closest) const
+	void rangeSearchSubtree(const T & center, Node *root, double r2, QList<T> & results) const
+	{
+		if (root == NULL)
+		{
+			return;
+		}
+
+		// check to see if the root is closer to center than the cutoff
+		double root_d2 = this->d2_fn(center, root->value);
+
+		if (root_d2 < r2) {
+			results.append(root->value);
+		}
+
+		// search the subtree of root that contains center
+		if (this->location_fn(center, root->axis) < root->location)
+		{
+			// center is left of the root
+			rangeSearchSubtree(center, root->left, r2, results);
+
+			// if the r2-wide sphere intersects with the plane dividing the two subtrees,
+			// search the other subtree as well
+			double r = root->location - this->location_fn(center, root->axis);
+
+			if ((r * r) < r2)
+			{
+				rangeSearchSubtree(center, root->right, r2, results);
+			}
+		}
+		else
+		{
+			// pt is right of the root
+			rangeSearchSubtree(center, root->right, r2, results);
+
+			// if the r2-wide sphere intersects with the plane dividing the two subtrees,
+			// search the other subtree as well
+			double r = this->location_fn(center, root->axis) - root->location;
+
+			if ((r * r) < r2)
+			{
+				rangeSearchSubtree(center, root->left, r2, results);
+			}
+		}
+	}
+
+	Node *nnSearchSubtree(const T & pt, Node *root, double & cutoff_r2, Node *default_closest) const
 	{
 		if (root == NULL)
 		{
@@ -124,7 +177,7 @@ private:
 		if (this->location_fn(pt, root->axis) < root->location)
 		{
 			// pt is left of the root
-			closest = searchSubtree(pt, root->left, cutoff_r2, closest);
+			closest = nnSearchSubtree(pt, root->left, cutoff_r2, closest);
 
 			// if the cutoff_r2-wide sphere intersects with the plane dividing the two subtrees,
 			// search the other subtree as well
@@ -132,13 +185,13 @@ private:
 
 			if ((r * r) <= cutoff_r2)
 			{
-				closest = searchSubtree(pt, root->right, cutoff_r2, closest);
+				closest = nnSearchSubtree(pt, root->right, cutoff_r2, closest);
 			}
 		}
 		else
 		{
 			// pt is right of the root
-			closest = searchSubtree(pt, root->right, cutoff_r2, closest);
+			closest = nnSearchSubtree(pt, root->right, cutoff_r2, closest);
 
 			// if the cutoff_r2-wide sphere intersects with the plane dividing the two subtrees,
 			// search the other subtree as well
@@ -146,7 +199,7 @@ private:
 
 			if ((r * r) <= cutoff_r2)
 			{
-				closest = searchSubtree(pt, root->left, cutoff_r2, closest);
+				closest = nnSearchSubtree(pt, root->left, cutoff_r2, closest);
 			}
 		}
 
