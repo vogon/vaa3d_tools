@@ -8,7 +8,8 @@ class SearchKDTree
 {
 public:
 	SearchKDTree(QList<T> & nodes, double (*location_fn)(const T &, int), 
-		double (*d2_fn)(const T &, const T &)): location_fn(location_fn), d2_fn(d2_fn)
+		double (*d2_fn)(const T &, const T &), bool (*skip_fn)(const T &) = NULL): 
+		location_fn(location_fn), d2_fn(d2_fn), skip_fn(skip_fn)
 	{
 		this->root = buildSubtree(nodes, 0, location_fn);
 	}
@@ -21,7 +22,9 @@ public:
 	T &nearestNeighbor(const T & pt) const
 	{
 		double r2 = std::numeric_limits<double>::infinity();
-		return nnSearchSubtree(pt, this->root, r2, NULL)->value;
+		Node *node = nnSearchSubtree(pt, this->root, r2, NULL);
+
+		return node->value;
 	}
 
 	QList<T> rangeSearch(const T & center, double r2) const
@@ -120,10 +123,13 @@ private:
 		}
 
 		// check to see if the root is closer to center than the cutoff
-		double root_d2 = this->d2_fn(center, root->value);
+		if ((this->skip_fn == NULL) || !this->skip_fn(root->value))
+		{
+			double root_d2 = this->d2_fn(center, root->value);
 
-		if (root_d2 < r2) {
-			results.append(root->value);
+			if (root_d2 < r2) {
+				results.append(root->value);
+			}
 		}
 
 		// search the subtree of root that contains center
@@ -167,12 +173,15 @@ private:
 		Node *closest = default_closest;
 
 		// check to see if the root is closer to pt than the cutoff
-		double root_d2 = this->d2_fn(pt, root->value);
-
-		if (root_d2 < cutoff_r2)
+		if ((this->skip_fn == NULL) || !this->skip_fn(root->value))
 		{
-			cutoff_r2 = root_d2;
-			closest = root;
+			double root_d2 = this->d2_fn(pt, root->value);
+
+			if (root_d2 < cutoff_r2)
+			{
+				cutoff_r2 = root_d2;
+				closest = root;
+			}
 		}
 
 		// search the subtree of root that contains pt
@@ -211,6 +220,7 @@ private:
 	Node *root;
 	double (*location_fn)(const T &, int);
 	double (*d2_fn)(const T &, const T &);
+	bool (*skip_fn)(const T &);
 };
 
 #endif /* !SEARCH_KDTREE_H */

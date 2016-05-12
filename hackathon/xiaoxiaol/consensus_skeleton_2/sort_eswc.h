@@ -96,6 +96,37 @@ bool combine_linker(vector<QList<NeuronSWC> > & linker, QList<NeuronSWC> & combi
     }
 };
 
+struct SortESWCState
+{
+    const NeuronSWC *node;
+    int *pGroupNum;
+    int index;
+};
+
+double location_sorteswcstate(const SortESWCState &state, int axis)
+{
+    switch (axis)
+    {
+    case 0: return state.node->x;
+    case 1: return state.node->y;
+    case 2: return state.node->z;
+    default: return nan("");
+    }
+}
+
+double d2_sorteswcstate(const SortESWCState &a, const SortESWCState &b)
+{
+    double xx = a.node->x - b.node->x;
+    double yy = a.node->y - b.node->y;
+    double zz = a.node->z - b.node->z;
+    return xx*xx + yy*yy + zz*zz;
+}
+
+bool skip_sorteswcstate(const SortESWCState &state)
+{
+    return *state.pGroupNum == 1;
+}
+
 bool SortESWC(QList<NeuronSWC> & neurons, QList<NeuronSWC> & result, V3DLONG newrootid, double thres)
 {
 
@@ -175,6 +206,23 @@ bool SortESWC(QList<NeuronSWC> & neurons, QList<NeuronSWC> & result, V3DLONG new
 
     //find the point in non-group 1 that is nearest to group 1,
     //include the nearest point as well as its neighbors into group 1, until all the nodes are connected
+
+    // build search data structure
+    QList<SortESWCState> states;
+
+    for (V3DLONG i = 0; i < siz; i++)
+    {
+        SortESWCState state;
+        state.node = &neurons.at(idlist.at(i));
+        state.pGroupNum = &(numbered[i]);
+        state.index = i;
+
+        states.append(state);
+    }
+
+    SearchKDTree<SortESWCState> kdtree(states, location_sorteswcstate, d2_sorteswcstate, 
+        skip_sorteswcstate);
+
     while((*group)>1)
     {
         double min = VOID;
@@ -183,27 +231,57 @@ bool SortESWC(QList<NeuronSWC> & neurons, QList<NeuronSWC> & result, V3DLONG new
         V3DLONG m1,m2;
         for (V3DLONG ii=0;ii<siz;ii++){
             if (numbered[ii]==1)
-                for (V3DLONG jj=0;jj<siz;jj++)
-                    if (numbered[jj]!=1)
-                    {
-                        dist2 = computeDist2(neurons.at(idlist.at(ii)),neurons.at(idlist.at(jj)));
-                        if (dist2<min)
-                        {
-                            min = dist2;
-                            mingroup = numbered[jj];
-                            m1 = ii;
-                            m2 = jj;
-                        }
-                    }
+            {
+                SortESWCState here;
+                here.node = &neurons.at(idlist.at(ii));
+
+                SortESWCState closest = kdtree.nearestNeighbor(here);
+
+                dist2 = computeDist2(neurons.at(idlist.at(ii)), *(closest.node));
+
+                if (dist2<min)
+                {
+                    min = dist2;
+                    mingroup = *closest.pGroupNum;
+                    m1 = ii;
+                    m2 = closest.index;
+                }
+
+                // for (V3DLONG jj=0;jj<siz;jj++)
+                // {
+                //     if (numbered[jj]!=1)
+                //     {
+                //         dist2 = computeDist2(neurons.at(idlist.at(ii)),neurons.at(idlist.at(jj)));
+                //         if (dist2<min)
+                //         {
+                //             min = dist2;
+                //             mingroup = numbered[jj];
+                //             m1 = ii;
+                //             m2 = jj;
+                //         }
+                //     }
+                // }
+
+            }
         }
+
+        cout << "moving group " << mingroup << " to group 1" << endl;
+
         for (V3DLONG i=0;i<siz;i++)
+        {
             if (numbered[i]==mingroup)
+            {
                 numbered[i] = 1;
+            }
+        }
+
         if (min<=thres*thres)
         {
+            cout << "connecting nodes " << m1 << " and " << m2 << endl;
             matrix[m1][m2] = true;
             matrix[m2][m1] = true;
         }
+
         (*group)--;
     }
 
