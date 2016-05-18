@@ -246,26 +246,8 @@ bool SortESWC(QList<NeuronSWC> & neurons, QList<NeuronSWC> & result, V3DLONG new
                     m1 = ii;
                     m2 = closest.index;
                 }
-
-                // for (V3DLONG jj=0;jj<siz;jj++)
-                // {
-                //     if (numbered[jj]!=1)
-                //     {
-                //         dist2 = computeDist2(neurons.at(idlist.at(ii)),neurons.at(idlist.at(jj)));
-                //         if (dist2<min)
-                //         {
-                //             min = dist2;
-                //             mingroup = numbered[jj];
-                //             m1 = ii;
-                //             m2 = jj;
-                //         }
-                //     }
-                // }
-
             }
         }
-
-        cout << "moving group " << mingroup << " to group 1" << endl;
 
         for (V3DLONG i=0;i<siz;i++)
         {
@@ -277,7 +259,6 @@ bool SortESWC(QList<NeuronSWC> & neurons, QList<NeuronSWC> & result, V3DLONG new
 
         if (min<=thres*thres)
         {
-            cout << "connecting nodes " << m1 << " and " << m2 << endl;
             matrix[m1][m2] = true;
             matrix[m2][m1] = true;
         }
